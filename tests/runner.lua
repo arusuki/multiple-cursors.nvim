@@ -89,7 +89,11 @@ cmp.setup({
 })
 
 local mc = require("multiple-cursors")
-mc.setup({ completion = engine == "native" and { backends = { "native" } } or nil })
+local backends = engine == "native" and { "native" } or { "native", "cmp" }
+for i, backend in ipairs(case.extra_backends or {}) do
+  table.insert(backends, i, backend)
+end
+mc.setup({ completion = { backends = backends } })
 
 -- Buffer -----------------------------------------------------------------------
 

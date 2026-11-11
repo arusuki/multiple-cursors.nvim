@@ -3,7 +3,6 @@ local M = {}
 local common = require("multiple-cursors.common")
 local virtual_cursors = require("multiple-cursors.virtual_cursors")
 local completion = require("multiple-cursors.completion")
-local native_completion = require("multiple-cursors.completion.backends.native")
 local insert_mode_character = require("multiple-cursors.insert_mode.character")
 
 
@@ -132,23 +131,10 @@ end
 -- Backspace command
 function M.bs()
 
-  -- A native completion item is inserted
-  local completed = native_completion.is_writing()
-
-  completion.flush({force = true})
-
+  -- A completion backend may end its completion before the backspace
+  local keys = completion.before_key("<BS>")
   all_virtual_cursors_backspace()
-
-  -- If a completion word was inserted
-  if completed then
-    -- Use escape to end completion, then return to insert mode and backspace
-    -- This is because backspace on the completion word is problematic
-    common.feedkeys(nil, 0, "<Esc>a<BS>", nil)
-  else
-    -- Just pass the backspace
-    common.feedkeys(nil, 0, "<BS>", nil)
-  end
-
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 
@@ -176,9 +162,9 @@ end
 
 -- Delete command
 function M.del()
-  completion.flush({force = true})
+  local keys = completion.before_key("<Del>")
   all_virtual_cursors_delete()
-  common.feedkeys(nil, 0, "<Del>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 
@@ -212,9 +198,9 @@ end
 -- Carriage return command
 -- Also for <kEnter>
 function M.cr()
-  completion.flush({force = true})
+  local keys = completion.before_key("<CR>")
   M.all_virtual_cursors_carriage_return()
-  common.feedkeys(nil, 0, "<CR>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 
@@ -269,11 +255,11 @@ end
 
 -- Tab command
 function M.tab()
-  completion.flush({force = true})
+  local keys = completion.before_key("<Tab>")
   M.all_virtual_cursors_tab()
   -- With 'noexpandtab' the <Tab> is inserted as a character at the real cursor
   insert_mode_character.ignore_next_char("\t")
-  common.feedkeys(nil, 0, "<Tab>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 

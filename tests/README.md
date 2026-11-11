@@ -29,6 +29,7 @@ Requirements:
 | `cases/buffer.lua` | Completing words in the buffer (cmp-buffer, `<C-p>`, `'autocomplete'`) |
 | `cases/fake_lsp.lua` | Text edits, additional text edits, snippets, and `completionItem/resolve` |
 | `cases/lua_ls.lua` | Completion with lua-language-server |
+| `cases/keys_together.lua` | Key maps of this plug-in typed together with `<C-p>` |
 
 ## Adding a case
 
@@ -59,5 +60,6 @@ Fields:
 - `lsp`: `{kind = "fake", items = function(line, character) ... end, resolve_delay = ms}` or `{kind = "lua_ls"}`
 - `options`: options to set, e.g. `{completeopt = "menu,menuone"}`
 - `cmp_replace`: confirm with `cmp.ConfirmBehavior.Replace`
+- `extra_backends`: completion backend tables used before the built-in backends
 - `requires`: `{nvim = "0.12"}` and/or `{executable = "lua-language-server"}`, otherwise the case is skipped
 - `timeout`: milliseconds, 60000 by default

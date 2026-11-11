@@ -219,4 +219,38 @@ return {
     engines = { "cmp" },
     expected = { H, "x " .. W, "y " .. W },
   },
+  {
+    -- A backend that fails to attach is skipped, the other backends are used
+    name = "backend that fails to attach",
+    lines = { H, "x fo", "y fo" },
+    cursors = { { 2, 4 }, { 3, 4 } },
+    extra_backends = {
+      {
+        name = "broken",
+        attach = function() error("broken backend") end,
+        is_writing = function() return false end,
+      },
+    },
+    keys = { "A", "@complete", "@confirm", "X", "<Esc>" },
+    expected = { H, "x " .. W .. "X", "y " .. W .. "X" },
+  },
+  {
+    -- The cmp backend isn't used if the nvim-cmp internals it uses are missing
+    name = "unsupported nvim-cmp version",
+    lines = { H, "x fo", "y fo" },
+    cursors = { { 2, 4 }, { 3, 4 } },
+    keys = {
+      function(ctx)
+        local backend = require("multiple-cursors.completion.backends.cmp")
+        ctx.assert(backend.available(), "expected the cmp backend to be available")
+        local event = ctx.cmp.event
+        ctx.cmp.event = nil
+        local ok, available = pcall(backend.available)
+        ctx.cmp.event = event
+        ctx.assert(ok and available == false, "expected the cmp backend to be unavailable")
+      end,
+    },
+    engines = { "cmp" },
+    expected = { H, "x fo", "y fo" },
+  },
 }

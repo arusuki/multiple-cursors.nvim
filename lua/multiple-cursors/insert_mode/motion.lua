@@ -5,9 +5,9 @@ local virtual_cursors = require("multiple-cursors.virtual_cursors")
 local completion = require("multiple-cursors.completion")
 
 local function normal_command_and_feedkeys(cmd, key)
-  completion.flush({force = true})
+  local keys = completion.before_key(key)
   virtual_cursors.move_with_normal_command(0, cmd)
-  common.feedkeys(nil, 0, key, nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 function M.up()

@@ -267,8 +267,14 @@ A backend for another completion engine can be provided as a table:
   -- Return true while the engine is writing to the buffer, including while
   -- asynchronous work that will write to the buffer is in flight
   is_writing = function() return false end,
+  -- Optional: called when a key map of this plug-in (e.g. <BS>, <CR>, <Esc>,
+  -- motions) is about to pass key to the real cursor, return the keys to feed
+  -- instead, e.g. to end the completion first
+  transform_key = function(key) return key end,
 }
 ```
+
+A backend that throws an error when it's checked or attached isn't used, and a warning is shown.
 
 ### `pre_hook` and `post_hook`
 

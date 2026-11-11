@@ -8,7 +8,7 @@ local escaped = false
 
 function M.escape()
 
-  completion.flush({force = true})
+  local keys = completion.before_key("<Esc>")
 
   -- Move the cursor back
   virtual_cursors.visit_with_cursor(function(vc)
@@ -18,7 +18,7 @@ function M.escape()
     end
   end)
 
-  common.feedkeys(nil, 0, "<Esc>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 
   escaped = true
 end

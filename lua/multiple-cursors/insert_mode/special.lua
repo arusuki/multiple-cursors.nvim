@@ -7,14 +7,14 @@ local extmarks = require("multiple-cursors.extmarks")
 
 -- Delete word
 function M.c_w()
-  completion.flush({force = true})
+  local keys = completion.before_key("<C-w>")
   virtual_cursors.edit_with_normal_command(0, "db", nil)
-  common.feedkeys(nil, 0, "<C-w>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 -- Indent
 function M.c_t()
-  completion.flush({force = true})
+  local keys = completion.before_key("<C-t>")
 
   -- Update the cursor position from the extmark so that the cursor stays in place
   virtual_cursors.edit_with_cursor_no_save(function(vc)
@@ -22,12 +22,12 @@ function M.c_t()
     extmarks.update_virtual_cursor_position(vc)
   end)
 
-  common.feedkeys(nil, 0, "<C-t>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 -- Deindent
 function M.c_d()
-  completion.flush({force = true})
+  local keys = completion.before_key("<C-d>")
 
   -- Update the cursor position from the extmark so that the cursor stays in place
   virtual_cursors.edit_with_cursor_no_save(function(vc)
@@ -35,7 +35,7 @@ function M.c_d()
     extmarks.update_virtual_cursor_position(vc)
   end)
 
-  common.feedkeys(nil, 0, "<C-d>", nil)
+  common.feedkeys(nil, 0, keys, nil)
 end
 
 return M

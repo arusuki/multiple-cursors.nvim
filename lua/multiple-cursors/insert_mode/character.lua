@@ -13,11 +13,11 @@ local chars = nil
 -- ignore when the key inserts it at the real cursor
 local ignored_char = nil
 
--- Discard any characters to insert
--- Used when a completion delta is replayed, because it includes the characters
-function M.discard_pending()
+-- Discard any characters to insert when a completion change is replayed,
+-- because it includes the characters
+completion.on_replay(function()
   chars = nil
-end
+end)
 
 -- Ignore the next InsertCharPre for char
 -- E.g. with 'noexpandtab' <Tab> is inserted as a character, but the <Tab> key
@@ -31,7 +31,6 @@ end
 function M.insert_char_pre(event)
   -- A completion engine is inserting text, this is replayed when it's finished
   if completion.is_writing() then
-    completion.begin()
     return
   end
 
@@ -50,7 +49,6 @@ function M.text_changed_i(event)
   ignored_char = nil
 
   if completion.is_writing() then
-    completion.begin()
     return
   end
 

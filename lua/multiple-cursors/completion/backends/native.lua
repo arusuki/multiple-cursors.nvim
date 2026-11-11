@@ -47,15 +47,27 @@ function M.is_pending()
   return false
 end
 
--- Completion text has been inserted at the real cursor
+-- Completion is active and an item is inserted at the real cursor
 -- Note: when there's a single match the popup menu isn't shown and
 -- CompleteChanged isn't triggered, so the completion mode is checked
-function M.is_writing()
+local function is_item_inserted()
   local info = vim.fn.complete_info({"mode", "selected"})
-  if info.mode ~= "" and info.mode ~= "ctrl_x" and info.selected ~= -1 then
-    return true
+  return info.mode ~= "" and info.mode ~= "ctrl_x" and info.selected ~= -1
+end
+
+-- Completion text has been inserted at the real cursor
+function M.is_writing()
+  return is_item_inserted() or M.is_pending()
+end
+
+-- With an inserted item, backspace deletes a character and finds the matches
+-- for the word before the cursor again, instead of just deleting a character.
+-- So the completion is ended first: escape, then return to insert mode.
+function M.transform_key(key)
+  if key == "<BS>" and is_item_inserted() then
+    return "<Esc>a" .. key
   end
-  return M.is_pending()
+  return key
 end
 
 function M.attach(bridge, group)

@@ -82,8 +82,36 @@ local function get_cmp()
   return nil
 end
 
+-- The internals of nvim-cmp that are used: cmp.core.suspend (wrapped),
+-- cmp.core.suspending, cmp.core.prepare and cmp.event:on
+local function is_supported(cmp)
+  local core = cmp.core
+  return type(core) == "table"
+    and type(core.suspend) == "function"
+    and type(core.prepare) == "function"
+    and type(cmp.event) == "table"
+    and type(cmp.event.on) == "function"
+end
+
+local warned = false
+
 function M.available()
-  return get_cmp() ~= nil
+  local cmp = get_cmp()
+
+  if not cmp then
+    return false
+  end
+
+  if not is_supported(cmp) then
+    if not warned then
+      warned = true
+      vim.notify("multiple-cursors: this version of nvim-cmp isn't supported by the \"cmp\" completion backend, "
+        .. "so its completions aren't replayed at the virtual cursors", vim.log.levels.WARN)
+    end
+    return false
+  end
+
+  return true
 end
 
 function M.is_writing()
