@@ -2,7 +2,9 @@ local M = {}
 
 local common = require("multiple-cursors.common")
 local virtual_cursors = require("multiple-cursors.virtual_cursors")
-local insert_mode_completion = require("multiple-cursors.insert_mode.completion")
+local completion = require("multiple-cursors.completion")
+local native_completion = require("multiple-cursors.completion.backends.native")
+local insert_mode_character = require("multiple-cursors.insert_mode.character")
 
 
 -- Backspace -------------------------------------------------------------------
@@ -130,7 +132,10 @@ end
 -- Backspace command
 function M.bs()
 
-  local completed = insert_mode_completion.complete_if_selected()
+  -- A native completion item is inserted
+  local completed = native_completion.is_writing()
+
+  completion.flush({force = true})
 
   all_virtual_cursors_backspace()
 
@@ -171,7 +176,7 @@ end
 
 -- Delete command
 function M.del()
-  insert_mode_completion.complete_if_selected()
+  completion.flush({force = true})
   all_virtual_cursors_delete()
   common.feedkeys(nil, 0, "<Del>", nil)
 end
@@ -207,7 +212,7 @@ end
 -- Carriage return command
 -- Also for <kEnter>
 function M.cr()
-  insert_mode_completion.complete_if_selected()
+  completion.flush({force = true})
   M.all_virtual_cursors_carriage_return()
   common.feedkeys(nil, 0, "<CR>", nil)
 end
@@ -264,8 +269,10 @@ end
 
 -- Tab command
 function M.tab()
-  insert_mode_completion.complete_if_selected()
+  completion.flush({force = true})
   M.all_virtual_cursors_tab()
+  -- With 'noexpandtab' the <Tab> is inserted as a character at the real cursor
+  insert_mode_character.ignore_next_char("\t")
   common.feedkeys(nil, 0, "<Tab>", nil)
 end
 

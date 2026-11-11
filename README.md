@@ -128,7 +128,7 @@ The following commands are supported while using multiple cursors:
 | Insert/replace | Non-printing characters | `<BS>` `<Del>` `<CR>` `<Tab>` | These commands are implemented manually, and may not behave correctly <br/> In replace mode `<BS>` will only move any virtual cursors back, and not undo edits |
 | Insert/replace | Delete word before | `<C-w>` | |
 | Insert/replace | Indentation | `<C-t>` `<C-d>` | |
-| Insert/replace | [Completion](https://neovim.io/doc/user/usr_24.html#24.3) | `<C-n>` `<C-p>` <br/> [`<C-x> ...`](https://neovim.io/doc/user/usr_24.html#_completing-specific-items) | Using backspace while completing a word will accept the word |
+| Insert/replace | [Completion](https://neovim.io/doc/user/usr_24.html#24.3) | `<C-n>` `<C-p>` <br/> [`<C-x> ...`](https://neovim.io/doc/user/usr_24.html#_completing-specific-items) | Using backspace while completing a word will accept the word <br/> Completion engines are also supported, see [`completion`](#completion) |
 | Insert | Change to replace mode | `<Insert>` | |
 | Visual | Swap cursor to other end of visual area | `o` | |
 | Visual | Modify visual area | `aw` `iw` `aW` `iW` `ab` `ib` `aB` `iB` `a>` `i>` `at` `it` `a'` `i'` `a"` `i"` `` a` `` `` i` `` | |
@@ -219,6 +219,56 @@ This option allows for disabling the "split pasting" function, where if the numb
 Default value: `true`
 
 When adding cursors to the word under the cursor (i.e. using the `MultipleCursorsAddMatches` command), if `match_visible_only = true` then new cursors will only be added to matches that are in the visible buffer.
+
+### `completion`
+
+Default value: `{backends = {"native", "cmp"}}`
+
+Completion engines insert text at the real cursor in their own way, e.g. confirming an item may delete the typed text and insert the item with a text edit.
+While a completion engine is writing to the buffer, characters aren't copied to the virtual cursors.
+When it has finished, the change at the real cursor is replayed at each virtual cursor:
+
+- The word before the real cursor that was replaced is matched at each virtual cursor, e.g. typing `fo` then completing `foobar` will replace `fo` at each virtual cursor
+- If a virtual cursor has different text before it, the longest text that matches the start of the completed word (ignoring case) is replaced, otherwise the completed word is inserted
+- Text after the cursor that was replaced (e.g. a replace range from a language server) is also replaced at the virtual cursors
+- Edits to other lines (e.g. an import added by a language server) are only applied once by the completion engine
+
+Built-in backends:
+
+| Backend | Completion engine |
+| --- | --- |
+| `"native"` | Neovim's built-in completion: `<C-n>`, `<C-p>`, `<C-x>` submodes, [`'autocomplete'`](https://neovim.io/doc/user/options.html#'autocomplete'), and [`vim.lsp.completion`](https://neovim.io/doc/user/lsp.html#lsp-completion) |
+| `"cmp"` | [nvim-cmp](https://github.com/hrsh7th/nvim-cmp), only used if nvim-cmp can be loaded |
+
+E.g. to only use the built-in completion:
+
+```lua
+opts = {
+  completion = {
+    backends = {"native"},
+  },
+},
+```
+
+A backend for another completion engine can be provided as a table:
+
+```lua
+{
+  name = "my_engine",
+  -- Optional: return false to not use the backend
+  available = function() return true end,
+  -- Called when multiple cursors mode is entered
+  -- bridge.begin(): call when the engine starts writing to the buffer
+  -- bridge.commit(): call when the engine has finished writing
+  -- group: autocmd group that is cleared when multiple cursors mode is exited
+  attach = function(bridge, group) end,
+  -- Called when multiple cursors mode is exited
+  detach = function() end,
+  -- Return true while the engine is writing to the buffer, including while
+  -- asynchronous work that will write to the buffer is in flight
+  is_writing = function() return false end,
+}
+```
 
 ### `pre_hook` and `post_hook`
 
@@ -431,7 +481,12 @@ end,
 #### [nvim-cmp](https://github.com/hrsh7th/nvim-cmp)
 
 Text completion.
-The plugin needs to be disabled while using multiple cursors:
+nvim-cmp is supported by the `"cmp"` [completion backend](#completion), which is enabled by default.
+Confirming an item, or inserting a selected item, is replayed at each virtual cursor.
+
+If an item expands a snippet, typing over the first placeholder is replayed at the virtual cursors, but jumping to other placeholders only applies to the real cursor.
+
+Alternatively nvim-cmp can be disabled while using multiple cursors:
 
 ```lua
 pre_hook = function()
@@ -560,3 +615,4 @@ where `lnum` is the line number of the new cursor, `col` is the column, and `cur
 
 - In insert/replace mode, `Backspace`, `Delete`, `Enter`, or `Tab` may behave incorrectly, in particular with less common indentation options. Please use the [Issues](https://github.com/brenton-leighton/multiple-cursors.nvim/issues) page to report issues.
 - When virtual cursors are locked, switching to or from visual mode won't update the virtual cursors and should be avoided
+- Snippets expanded by a completion engine are only partly supported: typing over the first placeholder is replayed at the virtual cursors, but jumping to other placeholders only applies to the real cursor

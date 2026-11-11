@@ -15,7 +15,6 @@ local insert_mode_motion = require("multiple-cursors.insert_mode.motion")
 local insert_mode_character = require("multiple-cursors.insert_mode.character")
 local insert_mode_nonprinting = require("multiple-cursors.insert_mode.nonprinting")
 local insert_mode_special = require("multiple-cursors.insert_mode.special")
-local insert_mode_completion = require("multiple-cursors.insert_mode.completion")
 local insert_mode_escape = require("multiple-cursors.insert_mode.escape")
 
 local visual_mode_modify_area = require("multiple-cursors.visual_mode.modify_area")
@@ -23,6 +22,7 @@ local visual_mode_delete_yank_change_put = require("multiple-cursors.visual_mode
 local visual_mode_edit = require("multiple-cursors.visual_mode.edit")
 local visual_mode_escape = require("multiple-cursors.visual_mode.escape")
 
+local completion = require("multiple-cursors.completion")
 local paste = require("multiple-cursors.paste")
 local search = require("multiple-cursors.search")
 
@@ -228,12 +228,10 @@ local function create_autocmds()
       { group = autocmd_group_id, callback = insert_mode_character.insert_char_pre }
     )
 
-    vim.api.nvim_create_autocmd({"TextChangedI"},
+    -- TextChangedP is for characters typed while the popup menu is visible, e.g.
+    -- with 'autocomplete'
+    vim.api.nvim_create_autocmd({"TextChangedI", "TextChangedP"},
       { group = autocmd_group_id, callback = insert_mode_character.text_changed_i }
-    )
-
-    vim.api.nvim_create_autocmd({"CompleteDonePre"},
-      { group = autocmd_group_id, callback = insert_mode_completion.complete_done_pre }
     )
 
     -- Mode changed from normal to insert or visual
@@ -282,6 +280,9 @@ function M.init()
     key_maps.set()
 
     create_autocmds()
+
+    -- Completion backends
+    completion.attach(autocmd_group_id)
 
     paste.override_handler()
 
@@ -340,6 +341,8 @@ function M.deinit(clear_virtual_cursors)
 
     key_maps.delete()
     key_maps.restore_existing()
+
+    completion.detach()
 
     vim.api.nvim_clear_autocmds({group = autocmd_group_id}) -- Clear autocmds
 
@@ -932,6 +935,9 @@ function M.setup(opts)
 
   -- Set up paste
   paste.setup(enable_split_paste)
+
+  -- Set up completion
+  completion.setup(opts.completion)
 
   -- Autocmds
   autocmd_group_id = vim.api.nvim_create_augroup("MultipleCursors", {})
