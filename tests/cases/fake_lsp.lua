@@ -7,6 +7,13 @@
 local lines = { "header", "x foEND rest", "y foEND rest" }
 local cursors = { { 2, 5 }, { 3, 5 } }
 
+local function import_edit()
+  return {
+    range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+    newText = "import x\n",
+  }
+end
+
 -- Replaces "fo" and "END", and adds an import at the top
 local function import_item(line, character)
   return { {
@@ -16,10 +23,7 @@ local function import_item(line, character)
       range = { start = { line = line, character = character - 2 }, ["end"] = { line = line, character = character + 3 } },
       newText = "foobar_lsp",
     },
-    additionalTextEdits = { {
-      range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
-      newText = "import x\n",
-    } },
+    additionalTextEdits = { import_edit() },
   } }
 end
 
@@ -44,6 +48,10 @@ local function snippet_item(line, character)
       newText = "foo(${1:arg})",
     },
   } }
+end
+
+local function import_foo_item()
+  return { { label = "import_foo", additionalTextEdits = { import_edit() } } }
 end
 
 -- The built-in completion inserts the text edit without the replace range
@@ -172,5 +180,40 @@ return {
       cmp = { "import x", "foobar_lspZ rest", "foobar_lspZ rest" },
       native = { "import x", "foobar_lspZEND rest", "foobar_lspZEND rest" },
     },
+  },
+  {
+    name = "import shares the completion prefix",
+    lines = { "im", "im" },
+    cursors = { { 1, 2 }, { 2, 2 } },
+    lsp = { kind = "fake", items = import_foo_item },
+    options = { completeopt = "menu,menuone,popup" },
+    keys = { "A", "@complete", "@confirm", "Z", "<Esc>" },
+    expected = { "import x", "import_fooZ", "import_fooZ" },
+  },
+  {
+    name = "snippet cursor immediately after an import",
+    lines = { "im", "im" },
+    cursors = { { 1, 2 }, { 2, 2 } },
+    engines = { "cmp" },
+    lsp = { kind = "fake", items = function()
+      local items = import_foo_item()
+      items[1].insertTextFormat = 2
+      items[1].insertText = "$0import_foo"
+      return items
+    end },
+    options = { completeopt = "menu,menuone,popup" },
+    keys = { "A", "@complete", "@confirm", "Z", "<Esc>" },
+    expected = { "import x", "Zimport_foo", "Zimport_foo" },
+  },
+  {
+    name = "multiline snippet repeats the completion prefix",
+    lines = { "im", "im" },
+    cursors = { { 1, 2 }, { 2, 2 } },
+    lsp = { kind = "fake", items = function()
+      return { { label = "import_foo", insertTextFormat = 2, insertText = "import_foo\nimport_bar$0" } }
+    end },
+    options = { completeopt = "menu,menuone,popup" },
+    keys = { "A", "@complete", "@confirm", "Z", "<Esc>" },
+    expected = { "import_foo", "import_barZ", "import_foo", "import_barZ" },
   },
 }

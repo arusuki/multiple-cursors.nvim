@@ -9,6 +9,9 @@ local W = "foobarbaz_word"
 -- First line provides the completion word (CTRL-P searches backwards)
 local H = W .. " Foo_upper"
 
+local accent = vim.fn.nr2char(0x301)
+local accented_word = "fooba" .. accent .. "r"
+
 return {
   {
     name = "same prefix",
@@ -142,6 +145,22 @@ return {
     keys = { "R", "@complete", "@confirm", "<Esc>" },
     engines = { "native" },
     expected = { H, "x " .. W, "y " .. W },
+  },
+  {
+    name = "replace mode with different prefix and suffix lengths",
+    lines = { "foobar", "x fo__", "y fo123456789", "z f__三四五六", "w foo12345" },
+    cursors = { { 2, 5 }, { 3, 5 }, { 4, 4 }, { 5, 6 } },
+    keys = { "R", "@complete", "@confirm", "<Esc>" },
+    engines = { "native" },
+    expected = { "foobar", "x foobar", "y foobar56789", "z foobar六", "w foobar45" },
+  },
+  {
+    name = "replace mode at end of real line",
+    lines = { accented_word, "x fo", "y fo123456", "z fo123a" .. accent .. "56" },
+    cursors = { { 2, 4 }, { 3, 4 }, { 4, 4 } },
+    keys = { "R", "<Right>", "@complete", "@confirm", "<Esc>" },
+    engines = { "native" },
+    expected = { accented_word, "x " .. accented_word, "y " .. accented_word .. "56", "z " .. accented_word .. "56" },
   },
   {
     -- Characters typed while the popup menu is visible trigger TextChangedP

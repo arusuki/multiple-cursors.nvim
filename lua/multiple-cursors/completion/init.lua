@@ -26,7 +26,7 @@
 local M = {}
 
 local common = require("multiple-cursors.common")
-local virtual_cursors = require("multiple-cursors.virtual_cursors")
+local replay = require("multiple-cursors.completion.replay")
 
 local builtin_backends = {
   native = "multiple-cursors.completion.backends.native",
@@ -38,12 +38,6 @@ local configured_backends = { "native", "cmp" }
 
 -- Attached backends
 local active_backends = {}
-
-local namespace_id = nil
-
--- Synchronised state of the real cursor:
--- { bufnr, line, col0, start_mark_id, start_right_mark_id, end_mark_id }
-local snapshot = nil
 
 -- A backend has written to the buffer since the snapshot was taken
 local dirty = false
@@ -61,234 +55,6 @@ local commit_timeout = 2000
 
 -- Names of backends that a warning has been shown for
 local warned_backends = {}
-
--- Snapshot -------------------------------------------------------------------
-
-local function clear_snapshot()
-  if snapshot and namespace_id then
-    pcall(vim.api.nvim_buf_clear_namespace, snapshot.bufnr, namespace_id, 0, -1)
-  end
-  snapshot = nil
-end
-
--- Save the line and cursor column of the real cursor
--- Extmarks track the line through changes to other lines and new lines inserted
--- by the completion:
--- - The start of the line has a left gravity and a right gravity extmark. Lines
---   inserted at the start of the line (e.g. an import added by a language
---   server) move the right gravity extmark, and the completion replacing text
---   from the start of the line with multiple lines moves it too. The start of
---   the line is between the two extmarks.
--- - The end of the line has a right gravity extmark
-local function take_snapshot()
-  local bufnr = vim.api.nvim_get_current_buf()
-  local pos = vim.api.nvim_win_get_cursor(0)
-  local row = pos[1] - 1
-  local line = vim.api.nvim_get_current_line()
-
-  if snapshot and snapshot.bufnr ~= bufnr then
-    clear_snapshot()
-  end
-
-  local old = snapshot or {}
-
-  snapshot = {
-    bufnr = bufnr,
-    line = line,
-    col0 = math.min(pos[2], #line),
-    start_mark_id = vim.api.nvim_buf_set_extmark(bufnr, namespace_id, row, 0,
-        { id = old.start_mark_id, right_gravity = false }),
-    start_right_mark_id = vim.api.nvim_buf_set_extmark(bufnr, namespace_id, row, 0,
-        { id = old.start_right_mark_id, right_gravity = true }),
-    end_mark_id = vim.api.nvim_buf_set_extmark(bufnr, namespace_id, row, #line,
-        { id = old.end_mark_id, right_gravity = true }),
-  }
-end
-
-
--- Delta ----------------------------------------------------------------------
-
--- Is the byte a UTF-8 continuation byte
-local function is_continuation_byte(b)
-  return b ~= nil and b >= 0x80 and b < 0xC0
-end
-
--- Number of bytes in the common prefix of a and b, on a character boundary
-local function common_prefix_length(a, b)
-  local n = 0
-  for i = 1, math.min(#a, #b) do
-    if a:byte(i) ~= b:byte(i) then break end
-    n = i
-  end
-  while n > 0 and is_continuation_byte(a:byte(n + 1)) do
-    n = n - 1
-  end
-  return n
-end
-
--- Number of bytes in the common suffix of a and b, on a character boundary
-local function common_suffix_length(a, b)
-  local n = 0
-  for i = 1, math.min(#a, #b) do
-    if a:byte(#a - i + 1) ~= b:byte(#b - i + 1) then break end
-    n = i
-  end
-  while n > 0 and is_continuation_byte(a:byte(#a - n + 1)) do
-    n = n - 1
-  end
-  return n
-end
-
--- Compute the change made at the real cursor since the snapshot
--- Returns nil if it can't be determined, otherwise a table with:
---   old_before, new_before: text before the cursor that was replaced
---   old_after, new_after:   text after the cursor that was replaced
-local function compute_delta()
-
-  local bufnr = vim.api.nvim_get_current_buf()
-
-  if not snapshot or snapshot.bufnr ~= bufnr then
-    return nil
-  end
-
-  local start_pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, namespace_id, snapshot.start_mark_id, {})
-  local start_right_pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, namespace_id, snapshot.start_right_mark_id, {})
-  local end_pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, namespace_id, snapshot.end_mark_id, {})
-
-  if next(start_pos) == nil or next(start_right_pos) == nil or next(end_pos) == nil then
-    return nil
-  end
-
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  local row = cursor[1] - 1
-  local min_row = start_pos[1]
-  local max_row = math.min(start_right_pos[1], row)
-  local last_row = math.max(end_pos[1], row)
-
-  -- The cursor must be within the changed region
-  if row < min_row then
-    return nil
-  end
-
-  local lines = vim.api.nvim_buf_get_lines(bufnr, min_row, last_row + 1, true)
-
-  local before0 = snapshot.line:sub(1, snapshot.col0)
-  local after0 = snapshot.line:sub(snapshot.col0 + 1)
-
-  -- Find the row where the line starts: the one with the longest common prefix
-  -- with the text before the cursor in the snapshot (the earliest if equal)
-  local before1, after1, p = nil, nil, -1
-
-  for first_row = min_row, max_row do
-    local first = first_row - min_row + 1
-    local text = table.concat(lines, "\n", first)
-
-    -- Byte offset of the cursor in text
-    local offset = 0
-    for i = first, row - min_row do
-      offset = offset + #lines[i] + 1
-    end
-    offset = offset + math.min(cursor[2], #lines[row - min_row + 1])
-
-    local candidate = text:sub(1, offset)
-    local n = common_prefix_length(before0, candidate)
-
-    if n > p then
-      before1, after1, p = candidate, text:sub(offset + 1), n
-    end
-  end
-
-  -- Text before the cursor: extend the replaced region back to the start of the
-  -- keyword, so that the replaced word can be matched at each virtual cursor
-  p = vim.fn.match(before0:sub(1, p), [[\k*$]])
-
-  -- Text after the cursor
-  local s = common_suffix_length(after0, after1)
-
-  return {
-    old_before = before0:sub(p + 1),
-    new_before = before1:sub(p + 1),
-    old_after = after0:sub(1, #after0 - s),
-    new_after = after1:sub(1, #after1 - s),
-  }
-
-end
-
--- Number of bytes to delete before a virtual cursor
-local function get_num_bytes_before(text_before, delta)
-
-  -- The virtual cursor has the same text as the real cursor
-  if delta.old_before == "" or text_before:sub(-#delta.old_before) == delta.old_before then
-    return #delta.old_before
-  end
-
-  -- Otherwise find the longest text before the cursor that matches the start of
-  -- the new text (case insensitive)
-  local num_chars = vim.fn.strchars(text_before)
-  local max = math.min(num_chars, vim.fn.strchars(delta.new_before))
-
-  for n = max, 1, -1 do
-    local tail = vim.fn.strcharpart(text_before, num_chars - n)
-    if tail:lower() == vim.fn.strcharpart(delta.new_before, 0, n):lower() then
-      return #tail
-    end
-  end
-
-  return 0
-
-end
-
--- Number of bytes to delete after a virtual cursor
-local function get_num_bytes_after(text_after, delta)
-
-  if delta.old_after == "" then
-    return 0
-  end
-
-  if text_after:sub(1, #delta.old_after) == delta.old_after then
-    return #delta.old_after
-  end
-
-  -- Replace mode overwrites characters
-  if common.is_mode("R") or common.is_mode("Rc") then
-    local n = vim.fn.strchars(delta.old_after)
-    return #vim.fn.strcharpart(text_after, 0, n)
-  end
-
-  return 0
-
-end
-
--- Replay the delta at a virtual cursor
-local function replay(vc, delta)
-
-  local row = vc.lnum - 1
-  local line = vim.api.nvim_buf_get_lines(0, row, row + 1, true)[1]
-  local col0 = math.min(vc.col - 1, #line)
-
-  local text_before = line:sub(1, col0)
-  local text_after = line:sub(col0 + 1)
-
-  local start_col = col0 - get_num_bytes_before(text_before, delta)
-  local end_col = col0 + get_num_bytes_after(text_after, delta)
-
-  local new_lines = vim.split(delta.new_before .. delta.new_after, "\n", { plain = true })
-  vim.api.nvim_buf_set_text(0, row, start_col, row, end_col, new_lines)
-
-  -- Move the virtual cursor to the end of new_before
-  local before_lines = vim.split(delta.new_before, "\n", { plain = true })
-
-  if #before_lines == 1 then
-    vc.col = start_col + #before_lines[1] + 1
-  else
-    vc.lnum = vc.lnum + #before_lines - 1
-    vc.col = #before_lines[#before_lines] + 1
-  end
-
-  vc.curswant = -1
-
-end
-
 
 -- Public functions -----------------------------------------------------------
 
@@ -324,7 +90,7 @@ end
 -- Take a snapshot if the state is synchronised
 function M.sync()
   if not dirty and common.is_mode_insert_replace() then
-    take_snapshot()
+    replay.capture()
   end
 end
 
@@ -354,18 +120,8 @@ function M.flush(opts)
     callback()
   end
 
-  local delta = compute_delta()
-
-  local edited = false
-
-  if delta and (delta.old_before ~= delta.new_before or delta.old_after ~= delta.new_after) then
-    virtual_cursors.edit(function(vc)
-      replay(vc, delta)
-    end)
-    edited = true
-  end
-
-  take_snapshot()
+  local edited = replay.apply()
+  replay.capture()
 
   return edited
 
@@ -484,8 +240,6 @@ function M.setup(opts)
   if opts.backends then
     configured_backends = opts.backends
   end
-
-  namespace_id = vim.api.nvim_create_namespace("multiple-cursors-completion")
 end
 
 -- Show a warning once for a backend
@@ -571,7 +325,7 @@ function M.detach()
   -- Cancel a waiting commit
   commit_generation = commit_generation + 1
 
-  clear_snapshot()
+  replay.clear()
 
 end
 
