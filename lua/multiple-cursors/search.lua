@@ -179,33 +179,26 @@ function M.get_matches_and_move_cursor(word, limit_to_visible, limit_to_prev_vis
 
 end
 
--- Get a single match after the cursor, optionally moving the cursor to the match before the cursor
-function M.get_next_match(word, backward, move_cursor)
-
-  local ignorecase = vim.o.ignorecase
-  vim.o.ignorecase = false
-
-  -- Get the next match without moving the cursor
-  local flags1 = backward and "bnwz" or "nwz"
-  local match = vim.fn.searchpos(word, flags1)
-
-  if match[1] == 0 or match[2] == 0 then
-    vim.o.ignorecase = ignorecase
-    return nil
+-- Find the word under the cursor (or the following word, as with <cword>).
+function M.get_word_start_col(pattern)
+  -- Only accept matches whose end is past the cursor's byte column.
+  local past_cursor = [[\%>]] .. vim.fn.col(".") .. "c"
+  local start = vim.fn.match(vim.api.nvim_get_current_line(), [[\C]] .. pattern .. past_cursor)
+  if start >= 0 then
+    return start + 1
   end
+end
 
-  if move_cursor then
-    -- Move cursor to the previous match
-    local flags2 = backward and "cz" or "bcz"
-    vim.fn.searchpos(word, flags2)
+-- Find the next distinct match, skipping the source even when the search wraps.
+function M.get_next_match(pattern, backward, lnum, col)
+  local function at_source()
+    return vim.fn.line(".") == lnum and vim.fn.col(".") == col
   end
+  local match = vim.fn.searchpos([[\C]] .. pattern, backward and "bnw" or "nwz", 0, 0, at_source)
 
-  vim.o.ignorecase = ignorecase
-
-  virtual_cursors.set_ignore_cursor_movement(false)
-
-  return match
-
+  if match[1] ~= 0 then
+    return match
+  end
 end
 
 return M
